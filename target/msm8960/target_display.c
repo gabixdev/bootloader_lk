@@ -119,6 +119,25 @@ static void msm8960_backlight_on(void)
 		dprintf(CRITICAL, "FAIL pm8921_gpio_config(): rc=%d.\n", rc);
 }
 
+//by NeoH
+static void msm8227_backlight_on(void)
+{
+	struct pm8921_gpio backlight_pwm = {
+		.direction = PM_GPIO_DIR_OUT,
+		.output_buffer = 0,
+		.output_value = 0,
+		.pull = PM_GPIO_PULL_NO,
+		.vin_sel = 2,
+		.out_strength = PM_GPIO_STRENGTH_HIGH,
+		.function = PM_GPIO_FUNC_1,
+		.inv_int_pol = 0,
+	};
+
+	int rc = pm8921_gpio_config(PM_GPIO(1), &backlight_pwm);
+	if (rc)
+		dprintf(CRITICAL, "FAIL pm8921_gpio_config(): rc=%d.\n", rc);
+}
+
 /* Pull DISP_RST_N high to get panel out of reset */
 static void msm8960_mipi_panel_reset(void)
 {
@@ -134,6 +153,23 @@ static void msm8960_mipi_panel_reset(void)
 		.disable_pin = 0,
 	};
 	pm8921_gpio_config(PM_GPIO(43), &gpio43_param);
+}
+
+//by NeoH
+static void msm8227_mipi_panel_reset(void)
+{
+	struct pm8921_gpio gpio58_param = {
+		.direction = PM_GPIO_DIR_OUT,
+		.output_buffer = 0,
+		.output_value = 1,
+		.pull = PM_GPIO_PULL_UP_30,
+		.vin_sel = 2,
+		.out_strength = PM_GPIO_STRENGTH_HIGH,
+		.function = PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol = 0,
+		.disable_pin = 0,
+	};
+	pm8921_gpio_config(PM_GPIO(58), &gpio58_param);
 }
 
 static int msm8960_mipi_panel_clock(int enable)
@@ -193,6 +229,27 @@ static int msm8960_mipi_panel_power(int enable)
 		pm8921_ldo_set_voltage(LDO_2, LDO_VOLTAGE_1_2V);
 
 		msm8960_mipi_panel_reset();
+	}
+
+	return 0;
+}
+
+//by NeoH
+static int msm8227_mipi_panel_power(int enable)
+{
+	if (enable) {
+		msm8227_backlight_on();
+
+		/* Turn on LDO8 for lcd1 mipi vdd */
+		pm8921_ldo_set_voltage(LDO_8, LDO_VOLTAGE_3_0V);
+
+		/* Turn on LDO11 for lcd1 mipi vddio */
+		pm8921_ldo_set_voltage(LDO_11, LDO_VOLTAGE_1_8V);
+
+		/* Turn on LDO2 for vdda_mipi_dsi */
+		//pm8921_ldo_set_voltage(LDO_2, LDO_VOLTAGE_1_2V);
+
+		msm8227_mipi_panel_reset();
 	}
 
 	return 0;
@@ -332,6 +389,20 @@ void target_display_init(const char *panel_name)
 		panel.mdp_rev    = MDP_REV_44;
 
 		hdmi_set_fb_addr(panel.fb.base);
+		break;
+	case LINUX_MACHTYPE_8627_CDP:
+		dprintf(INFO, "Configuring display for 8627 CDP\n");
+		mipi_orise_init(&(panel.panel_info));
+		panel.clk_func = msm8960_mipi_panel_clock;
+		panel.power_func = msm8227_mipi_panel_power;
+		panel.fb.base = 0x89000000;
+		panel.fb.width =  panel.panel_info.xres;
+		panel.fb.height =  panel.panel_info.yres;
+		panel.fb.stride =  panel.panel_info.xres;
+		panel.fb.bpp =  panel.panel_info.bpp;
+		panel.fb.format = FB_FORMAT_RGB888;
+		panel.mdp_rev = MDP_REV_42;
+		dprintf(INFO, "Display configuration done for 8627 CDP\n");
 		break;
 	default:
 		return;
